@@ -1,12 +1,12 @@
 import os
 import logging
+import asyncio
 from threading import Thread
 from flask import Flask
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 import yt_dlp
 
-# إعداد السجلات
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
@@ -14,7 +14,6 @@ logging.basicConfig(
 
 TOKEN = os.getenv("BOT_TOKEN")
 
-# إنشاء سيرفر Flask مصغر لإرضاء فحص Render
 web_app = Flask(__name__)
 
 @web_app.route('/')
@@ -29,7 +28,7 @@ def run_flask():
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "أهلاً بك في بوت تحميل الفيديوهات! 🎬\n\n"
-        "أرسل لي رابط الفيديو من (يوتيوب، إنستغرام، فيسبوك، تيك توك، سناب شات) وسأقوم بتحميله لك."
+        "أرسل لي رابط الفيديو وسأقوم بتحميله لك."
     )
 
 async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -73,12 +72,15 @@ def main():
         print("خطأ: لم يتم ضبط BOT_TOKEN!")
         return
 
-    # تشغيل سيرفر Web في الـ Thread
+    # تشغيل سيرفر Flask
     t = Thread(target=run_flask)
     t.daemon = True
     t.start()
 
-    # تشغيل بوت تلجرام
+    # إصلاح مشكلة Event Loop في Python 3.14
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download_video))
