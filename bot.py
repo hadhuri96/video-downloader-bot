@@ -1,11 +1,12 @@
 import os
 import logging
-from http.server import HTTPServer, BaseHTTPRequestHandler
 from threading import Thread
+from flask import Flask
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 import yt_dlp
 
+# إعداد السجلات
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
@@ -13,20 +14,17 @@ logging.basicConfig(
 
 TOKEN = os.getenv("BOT_TOKEN")
 
-class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
-    def do_GET(self):
-        self.send_response(200)
-        self.end_headers()
-        self.wfile.write(b"Bot is alive!")
+# إنشاء سيرفر Flask مصغر لإرضاء فحص Render
+web_app = Flask(__name__)
 
-    def do_HEAD(self):
-        self.send_response(200)
-        self.end_headers()
+@web_app.route('/')
+@web_app.route('/health')
+def health_check():
+    return "Bot is running perfectly!", 200
 
-def run_health_check_server():
-    port = int(os.environ.get("PORT", 8080))
-    server = HTTPServer(('0.0.0.0', port), SimpleHTTPRequestHandler)
-    server.serve_forever()
+def run_flask():
+    port = int(os.environ.get("PORT", 10000))
+    web_app.run(host='0.0.0.0', port=port)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -75,10 +73,12 @@ def main():
         print("خطأ: لم يتم ضبط BOT_TOKEN!")
         return
 
-    t = Thread(target=run_health_check_server)
+    # تشغيل سيرفر Web في الـ Thread
+    t = Thread(target=run_flask)
     t.daemon = True
     t.start()
 
+    # تشغيل بوت تلجرام
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, download_video))
