@@ -1,13 +1,11 @@
 import os
 import logging
-import asyncio
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from threading import Thread
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 import yt_dlp
 
-# إعداد السجلات
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
@@ -15,12 +13,15 @@ logging.basicConfig(
 
 TOKEN = os.getenv("BOT_TOKEN")
 
-# سيرفر وهمي لإرضاء موقع Render ليقبله كـ Web Service مجاني
 class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
         self.wfile.write(b"Bot is alive!")
+
+    def do_HEAD(self):
+        self.send_response(200)
+        self.end_headers()
 
 def run_health_check_server():
     port = int(os.environ.get("PORT", 8080))
@@ -74,7 +75,6 @@ def main():
         print("خطأ: لم يتم ضبط BOT_TOKEN!")
         return
 
-    # تشغيل السيرفر في خلفية منفصلة
     t = Thread(target=run_health_check_server)
     t.daemon = True
     t.start()
