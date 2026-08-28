@@ -1,42 +1,53 @@
 import os
 import logging
+import asyncio
+from http.server import HTTPServer, BaseHTTPRequestHandler
+from threading import Thread
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 import yt_dlp
 
-# إعداد السجلات (Logging)
+# إعداد السجلات
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 
-# استدعاء التوكن من متغيرات البيئة (سنضيفه في موقع الاستضافة للأمان)
 TOKEN = os.getenv("BOT_TOKEN")
+
+# سيرفر وهمي لإرضاء موقع Render ليقبله كـ Web Service مجاني
+class SimpleHTTPRequestHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is alive!")
+
+def run_health_check_server():
+    port = int(os.environ.get("PORT", 8080))
+    server = HTTPServer(('0.0.0.0', port), SimpleHTTPRequestHandler)
+    server.serve_forever()
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "أهلاً بك في بوت تحميل الفيديوهات! 🎬\n\n"
-        "أرسل لي رابط الفيديو من (يوتيوب، إنستغرام، فيسبوك، تيك توك، سناب شات) وسأقوم بتحميله لك فوراً."
+        "أرسل لي رابط الفيديو من (يوتيوب، إنستغرام، فيسبوك، تيك توك، سناب شات) وسأقوم بتحميله لك."
     )
 
 async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text.strip()
     
-    # التأكد من أن الرسالة تحتوي على رابط
     if not (url.startswith("http://") or url.startswith("https://")):
         await update.message.reply_text("يرجى إرسال رابط صحيح يبتدئ بـ http أو https.")
         return
 
     msg = await update.message.reply_text("⏳ جاري معالجة الرابط وتحميل الفيديو...")
-
     output_file = f"video_{update.message.message_id}.mp4"
 
-    # خيارات مكتبة yt-dlp
     ydl_opts = {
         'format': 'best[ext=mp4]/best',
         'outtmpl': output_file,
         'quiet': True,
-        'max_filesize': 48 * 1024 * 1024, # حد أقصى 48 ميجابايت لتجنب قيود التلجرام للبوتات العادية
+        'max_filesize': 48 * 1024 * 1024,
     }
 
     try:
@@ -48,7 +59,6 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
         with open(output_file, 'rb') as video:
             await update.message.reply_video(video=video, caption="تم التحميل بنجاح ✨")
 
-        # حذف الملف من السيرفر بعد الإرسال لتوفير المساحة
         if os.path.exists(output_file):
             os.remove(output_file)
             
@@ -57,12 +67,17 @@ async def download_video(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         if os.path.exists(output_file):
             os.remove(output_file)
-        await msg.edit_text(f"❌ حدث خطأ أثناء التحميل: قد يكون الرابط غير مدعوم أو أن حجم الفيديو يتجاوز الحد المسموح (50MB).")
+        await msg.edit_text("❌ حدث خطأ أثناء التحميل: قد يكون الرابط غير مدعوم أو أن حجم الفيديو يتجاوز 50MB.")
 
 def main():
     if not TOKEN:
         print("خطأ: لم يتم ضبط BOT_TOKEN!")
         return
+
+    # تشغيل السيرفر في خلفية منفصلة
+    t = Thread(target=run_health_check_server)
+    t.daemon = True
+    t.start()
 
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
