@@ -22,7 +22,7 @@ logging.basicConfig(
 TOKEN = os.getenv("BOT_TOKEN")
 
 # ضع هنا رابط GitHub Pages الخاص بك بعد رفعه (مثال: https://username.github.io/repo-name/)
-WEB_APP_URL = "https://your-username.github.io/your-repo-name/"
+WEB_APP_URL = "https://hadhuri96.github.io/video-downloader-bot"
 
 # 2. سيرفر Flask خفيف لإبقاء الاستضافة (Render) شغالاً بدون توقف
 web_app = Flask(__name__)
