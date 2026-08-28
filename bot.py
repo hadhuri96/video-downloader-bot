@@ -9,13 +9,10 @@ from telegram.ext import (
     Application,
     CommandHandler,
     MessageHandler,
-    CallbackQueryHandler,
     filters,
     ContextTypes,
 )
-import yt_dlp
 
-# إعداد السجلات
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
@@ -23,103 +20,95 @@ logging.basicConfig(
 
 TOKEN = os.getenv("BOT_TOKEN")
 
-# سيرفر Flask خفيف لإبقاء Render شغالاً
+# سيرفر Flask مصغر لمنع توقف Render
 web_app = Flask(__name__)
 
 @web_app.route('/')
-@web_app.route('/health')
-def health_check():
+def health():
     return "OK", 200
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
     web_app.run(host='0.0.0.0', port=port)
 
-# رسالة الترحيب
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = (
-        "⚡ **أهلاً بك في البوت الشامل لتحميل الفيديوهات!**\n\n"
-        "أرسل لي أي رابط وسأقوم بتحميله فوراً وبدون علامه مائيه:\n"
+        "⚡ **أهلاً بك في بوت التحميل السريع!**\n\n"
+        "أرسل لي أي رابط من:\n"
         "• **TikTok** (بدون علامة مائية ✨)\n"
-        "• **Instagram** (Reels / Posts / Stories)\n"
-        "• **YouTube** (Shorts / Videos)\n"
-        "• **Facebook & Twitter (X)**\n\n"
-        "🚀 *فقط أرسل الرابط وسأتولى الباقي!*"
+        "• **YouTube Shorts / Videos**\n"
+        "• **Instagram Reels**\n\n"
+        "🚀 *فقط قم بإرسال الرابط وسأقوم بتنزيله فوراً!*"
     )
     await update.message.reply_text(welcome_text, parse_mode='Markdown')
 
-# التحميل المباشر عبر API Cobalt (أسرع وأضمن طريقة لتجاوز الحظر)
-async def fetch_via_cobalt(url: str):
+# API متطور لتنزيل تيك توك بدون علامة مائية
+async def download_tiktok(url: str):
+    api_url = f"https://api.tiklydown.eu.org/api/download?url={url}"
+    async with httpx.AsyncClient(timeout=20.0) as client:
+        response = await client.get(api_url)
+        if response.status_code == 200:
+            data = response.json()
+            # استخراج رابط الفيديو المباشر بدون علامة مائية
+            video_url = data.get("video", {}).get("noWatermark") or data.get("video", {}).get("watermark")
+            return video_url
+    return None
+
+# API متطور عام للروابط الأخرى (Shorts / Reels)
+async def download_generic(url: str):
     api_url = "https://api.cobalt.tools/api/json"
     headers = {
         "Accept": "application/json",
         "Content-Type": "application/json",
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
     }
-    payload = {
-        "url": url,
-        "videoQuality": "max",
-        "noWatermark": True
-    }
+    payload = {"url": url, "videoQuality": "720"}
     
-    async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
-        response = await client.post(api_url, json=payload, headers=headers)
-        if response.status_code == 200:
-            data = response.json()
-            if data.get("status") in ["tunnel", "redirect"]:
-                return data.get("url")
+    async with httpx.AsyncClient(timeout=25.0) as client:
+        res = await client.post(api_url, json=payload, headers=headers)
+        if res.status_code == 200:
+            data = res.json()
+            return data.get("url")
     return None
 
-# التعامل مع الروابط المرسلة
-async def handle_url(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     url = update.message.text.strip()
-    
+
     if not (url.startswith("http://") or url.startswith("https://")):
-        await update.message.reply_text("❌ يرجى إرسال رابط صحيح يبتدئ بـ http أو https.")
+        await update.message.reply_text("❌ يرجى إرسال رابط صحيح.")
         return
 
-    msg = await update.message.reply_text("⚡ **جاري معالجة الرابط وتحضير الفيديو...**", parse_mode='Markdown')
+    msg = await update.message.reply_text("⏳ **جاري جلب الفيديو...**", parse_mode='Markdown')
 
-    # المحاولة 1: عبر API السريع (بدون علامة مائية للمنصات الشهيرة)
-    try:
-        direct_video_url = await fetch_via_cobalt(url)
-        if direct_video_url:
-            await msg.edit_text("⬆️ **جاري رفع الفيديو إلى تلجرام...**", parse_mode='Markdown')
+    video_url = None
+
+    # المعالجة الخاصة بتيك توك
+    if "tiktok.com" in url:
+        try:
+            video_url = await download_tiktok(url)
+        except Exception as e:
+            logging.error(f"TikTok API error: {e}")
+
+    # إذا لم يكن تيك توك أو فشل المحرك الأول، استخدم المحرك العام
+    if not video_url:
+        try:
+            video_url = await download_generic(url)
+        except Exception as e:
+            logging.error(f"Generic API error: {e}")
+
+    # إرسال الفيديو للمستخدم
+    if video_url:
+        try:
+            await msg.edit_text("⬆️ **جاري الرفع إلى تلجرام...**", parse_mode='Markdown')
             await update.message.reply_video(
-                video=direct_video_url,
-                caption="✨ **تم التحميل بنجاح وبدون علامة مائية!**"
+                video=video_url,
+                caption="✨ **تم التحميل بنجاح!**\n\nتم التنزيل عبر البوت الخاص بك."
             )
             await msg.delete()
-            return
-    except Exception as e:
-        logging.warning(f"Cobalt API failed, switching to yt-dlp: {e}")
-
-    # المحاولة 2: الاحتياطية عبر yt-dlp إذا فشل الـ API
-    output_file = f"video_{update.message.message_id}.mp4"
-    ydl_opts = {
-        'format': 'best[ext=mp4]/best',
-        'outtmpl': output_file,
-        'quiet': True,
-        'max_filesize': 48 * 1024 * 1024,
-        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-    }
-
-    try:
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, lambda: yt_dlp.YoutubeDL(ydl_opts).download([url]))
-
-        await msg.edit_text("⬆️ **جاري رفع الفيديو إلى تلجرام...**", parse_mode='Markdown')
-        with open(output_file, 'rb') as v:
-            await update.message.reply_video(video=v, caption="✨ **تم التحميل بنجاح!**")
-
-        if os.path.exists(output_file):
-            os.remove(output_file)
-        await msg.delete()
-
-    except Exception as e:
-        if os.path.exists(output_file):
-            os.remove(output_file)
-        await msg.edit_text("❌ **فشل تحميل الفيديو.**\nقد يكون الحساب خاصاً أو الفيديو يتجاوز حجم 50MB.")
+        except Exception as e:
+            await msg.edit_text("❌ حدث خطأ أثناء إرسال الفيديو، قد يكون حجمه كبيراً جداً.")
+    else:
+        await msg.edit_text("❌ **فشل التحميل.** الرابط غير مدعوم أو أن السيرفر المحمل عليه مشغولات حالياً.")
 
 def main():
     if not TOKEN:
@@ -131,16 +120,15 @@ def main():
     t.daemon = True
     t.start()
 
-    # إعداد Event Loop
+    # تهيئة Event Loop
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
     app = Application.builder().token(TOKEN).build()
-    
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_url))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 
-    print("البوت الاحترافي الشامل يعمل الآن...")
+    print("البوت يعمل بنجاح...")
     app.run_polling()
 
 if __name__ == '__main__':
