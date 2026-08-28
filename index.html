@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>تنزيل فيديو</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-50 text-slate-800 flex flex-col justify-between min-h-screen p-4 font-sans">
+
+    <!-- Content Area -->
+    <div class="flex-1 flex flex-col items-center justify-center max-w-md mx-auto w-full">
+        <h1 class="text-2xl font-bold mb-6 text-slate-900">تنزيل فيديو من TikTok</h1>
+        
+        <input type="url" id="videoUrl" placeholder="ألسق رابط TikTok" 
+            class="w-full p-3.5 border border-slate-200 rounded-xl bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 mb-4 text-center">
+
+        <button onclick="downloadVideo()" id="btn" 
+            class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3.5 rounded-xl shadow-md transition duration-200">
+            تنزيل
+        </button>
+
+        <div id="status" class="mt-4 text-sm font-medium text-slate-600 hidden"></div>
+        
+        <div id="result" class="mt-4 w-full hidden">
+            <a id="dlLink" href="#" target="_blank" 
+                class="block w-full text-center bg-emerald-600 text-white py-3 rounded-xl font-bold shadow">
+                💾 اضغط هنا لتحميل الفيديو
+            </a>
+        </div>
+    </div>
+
+    <!-- Bottom Navigation Bar -->
+    <div class="border-t border-slate-200 pt-2 flex justify-around text-xs text-slate-500">
+        <button class="flex flex-col items-center text-blue-600 font-bold">
+            <span>🏠</span> الرئيسية
+        </button>
+        <button class="flex flex-col items-center">
+            <span>⬇️</span> التنزيلات
+        </button>
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+
+        async function downloadVideo() {
+            const url = document.getElementById('videoUrl').value.trim();
+            const status = document.getElementById('status');
+            const result = document.getElementById('result');
+            const dlLink = document.getElementById('dlLink');
+
+            if (!url) {
+                alert('يرجى إلصاق رابط صحيح');
+                return;
+            }
+
+            status.innerText = "⏳ جاري جلب الرابط...";
+            status.classList.remove('hidden');
+            result.classList.add('hidden');
+
+            try {
+                // استخدام API معالجة مباشر من جانب المتصفح
+                const res = await fetch(`https://www.tikwm.com/api/?url=${encodeURIComponent(url)}`);
+                const data = await res.json();
+
+                if (data.code === 0 && data.data.play) {
+                    status.innerText = "✨ تم إيجاد الفيديو بنجاح!";
+                    dlLink.href = data.data.play;
+                    result.classList.remove('hidden');
+                } else {
+                    status.innerText = "❌ فشل جلب الفيديو. تأكد من صحة الرابط.";
+                }
+            } catch (err) {
+                status.innerText = "❌ حدث خطأ أثناء الاتصال بالشبكة.";
+            }
+        }
+    </script>
+</body>
+</html>
